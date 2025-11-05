@@ -27,5 +27,11 @@ export type DiagramSpec = {
     padding?: number;
     background?: string;
     labelOffset?: number;
+    stateLabelOffset?: number;
+    stateLabelSize?:number;
+    transitionLabelSize?:number;
+    finalRingGap?:number;
+    initialArrowLength?:number;
+    initialArrowSpread?:number;
   };
 };

@@ -15,20 +15,47 @@ const boundsPadding = (minX: number, minY: number, maxX: number, maxY: number, p
 
 /* —— 样式 —— */
 type Style = {
-  stateRadius: number; strokeWidth: number; fontFamily: string;
-  labelItalic: boolean; arrowSize: number; padding: number; background: string; labelOffset: number;
+  // stateRadius: number; strokeWidth: number; fontFamily: string;
+  // labelItalic: boolean; arrowSize: number; padding: number; background: string; labelOffset: number;
+  stateRadius: number;
+  strokeWidth: number;
+  fontFamily: string;
+  labelItalic: boolean;
+  arrowSize: number;
+  padding: number;
+  background: string;
+  labelOffset: number;
+  stateLabelOffset: number;
+  stateLabelSize: number;
+  transitionLabelSize: number;
+  finalRingGap: number;
+  initialArrowLength: number;
+  initialArrowSpread: number;
 };
 
 export function renderAutodata(spec: DiagramSpec): string {
   const st: Style = {
-    stateRadius: spec.style?.stateRadius ?? 22,
-    strokeWidth: spec.style?.strokeWidth ?? 1.6,
-    fontFamily: spec.style?.fontFamily ?? "Times New Roman, Noto Serif, serif",
+    // stateRadius: spec.style?.stateRadius ?? 22,
+    // strokeWidth: spec.style?.strokeWidth ?? 1.6,
+    // fontFamily: spec.style?.fontFamily ?? "Times New Roman, Noto Serif, serif",
+    stateRadius: spec.style?.stateRadius ?? 28,
+    strokeWidth: spec.style?.strokeWidth ?? 2,
+    fontFamily: spec.style?.fontFamily ?? '"Times New Roman", Times, serif',
     labelItalic: spec.style?.labelItalic ?? true,
-    arrowSize: spec.style?.arrowSize ?? 8,
-    padding: spec.style?.padding ?? 44,
-    background: spec.style?.background ?? "transparent",
-    labelOffset: spec.style?.labelOffset ?? 12
+    // arrowSize: spec.style?.arrowSize ?? 8,
+    // padding: spec.style?.padding ?? 44,
+    // background: spec.style?.background ?? "transparent",
+    // labelOffset: spec.style?.labelOffset ?? 12
+    arrowSize: spec.style?.arrowSize ?? 9,
+    padding: spec.style?.padding ?? 56,
+    background: spec.style?.background ?? "#ffffff",
+    labelOffset: spec.style?.labelOffset ?? 18,
+    stateLabelOffset: spec.style?.stateLabelOffset ?? 20,
+    stateLabelSize: spec.style?.stateLabelSize ?? 16,
+    transitionLabelSize: spec.style?.transitionLabelSize ?? 16,
+    finalRingGap: spec.style?.finalRingGap ?? 6,
+    initialArrowLength: spec.style?.initialArrowLength ?? 34,
+    initialArrowSpread: spec.style?.initialArrowSpread ?? 16
   };
 
   // 包围盒
@@ -73,21 +100,39 @@ function drawState(name: string, s: StateSpec, st: Style): string {
   const r = s.radius ?? st.stateRadius, cx = s.x, cy = s.y;
   const out: string[] = [];
   out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(r) }));
-  if (s.final) out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(r - 4) }));
+  // if (s.final) out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(r - 4) }));
+  if (s.final) {
+    const inner = Math.max(r - st.finalRingGap, 4);
+    out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(inner) }));
+  }
 
   // 初态：贴边直线 + 小饰线
   if (s.initial) {
     const tip = { x: cx - r, y: cy };
-    const from = { x: tip.x - 30, y: tip.y };
-    out.push(`<path d="M ${from.x} ${from.y} L ${tip.x} ${tip.y}" marker-end="url(#ad-arrow)"/>`);
-    out.push(`<path d="M ${cx - r - 16} ${cy - 7} L ${cx - r - 4} ${cy - 2}"/>`);
+    // const from = { x: tip.x - 30, y: tip.y };
+    // out.push(`<path d="M ${from.x} ${from.y} L ${tip.x} ${tip.y}" marker-end="url(#ad-arrow)"/>`);
+    // out.push(`<path d="M ${cx - r - 16} ${cy - 7} L ${cx - r - 4} ${cy - 2}"/>`);
+    const tail = { x: tip.x - st.initialArrowLength, y: cy };
+    const wing = st.initialArrowSpread;
+    const wingInner = wing * 0.55;
+    const upper = { x: tip.x - wingInner, y: cy - wing };
+    const lower = { x: tip.x - wingInner, y: cy + wing };
+    out.push(`<path d="M ${tail.x} ${tail.y} L ${tip.x} ${tip.y}"/>`);
+    out.push(`<path d="M ${upper.x} ${upper.y} L ${tip.x} ${tip.y} L ${lower.x} ${lower.y}"/>`);
   }
 
   // 状态名
   const label = s.label ?? name;
   out.push(svgEl("text", {
-    x: String(cx), y: String(cy + r + 18),
-    "text-anchor": "middle", "font-style": "normal", "font-size": "14", "font-weight": "600"
+    // x: String(cx), y: String(cy + r + 18),
+    // "text-anchor": "middle", "font-style": "normal", "font-size": "14", "font-weight": "600"
+    x: String(cx), y: String(cy + r + st.stateLabelOffset),
+    "text-anchor": "middle",
+    "font-style": "normal",
+    "font-size": String(st.stateLabelSize),
+    "font-weight": "600",
+    fill: "currentColor",
+    stroke: "none"
   }, esc(label)));
 
   return out.join("\n");
@@ -111,7 +156,12 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
     const lt = { x: A.x + Math.cos(ang) * (loopR + 22), y: A.y + Math.sin(ang) * (loopR + 22) };
     out.push(svgEl("text", {
       x: String(lt.x), y: String(lt.y),
-      "text-anchor": "middle", "font-size": "16", "font-style": "italic"
+      // "text-anchor": "middle", "font-size": "16", "font-style": "italic"
+      "text-anchor": "middle",
+      "font-size": String(st.transitionLabelSize),
+      "font-style": st.labelItalic ? "italic" : "normal",
+      fill: "currentColor",
+      stroke: "none"
     }, esc(label)));
     return out.join("\n");
   }
@@ -136,7 +186,12 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
   const lp = add(lm, tn);
   out.push(svgEl("text", {
     x: String(lp.x), y: String(lp.y),
-    "text-anchor": "middle", "font-size": "16", "font-style": "italic"
+    // "text-anchor": "middle", "font-size": "16", "font-style": "italic"
+    "text-anchor": "middle",
+    "font-size": String(st.transitionLabelSize),
+    "font-style": st.labelItalic ? "italic" : "normal",
+    fill: "currentColor",
+    stroke: "none"
   }, esc(label)));
 
   return out.join("\n");
