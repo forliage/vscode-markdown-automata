@@ -1,0 +1,40 @@
+{
+  "name": "autodata-markdown",
+  "displayName": "Autodata Diagrams for Markdown",
+  "description": "Render textbook-accurate automata diagrams from ```autodata fences in Markdown; PNG for preview, SVG for papers.",
+  "version": "1.0.3",
+  "publisher": "forliage",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Programming Languages", "Other"],
+  "activationEvents": ["onLanguage:markdown"],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "markdown.markdownItPlugins": true
+  },
+  "bin": {
+    "dfa-render": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "webpack --mode=production",
+    "watch": "webpack --watch --mode=development",
+    "package": "vsce package",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/js-yaml": "^4.0.9",
+    "@types/markdown-it": "^14.1.2",
+    "@types/node": "^20.11.30",
+    "@types/vscode": "^1.85.0",
+    "@vscode/test-electron": "^2.3.9",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.6.3",
+    "vsce": "^2.15.0",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "js-yaml": "^4.1.0",
+    "markdown-it": "^14.1.0",
+    "sharp": "^0.33.3"
+  }
+}
