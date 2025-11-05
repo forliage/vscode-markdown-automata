@@ -46,7 +46,7 @@ export function renderAutodata(spec: DiagramSpec): string {
     // padding: spec.style?.padding ?? 44,
     // background: spec.style?.background ?? "transparent",
     // labelOffset: spec.style?.labelOffset ?? 12
-    arrowSize: spec.style?.arrowSize ?? 9,
+    arrowSize: spec.style?.arrowSize ?? 8,
     padding: spec.style?.padding ?? 56,
     background: spec.style?.background ?? "#ffffff",
     labelOffset: spec.style?.labelOffset ?? 18,
@@ -54,8 +54,8 @@ export function renderAutodata(spec: DiagramSpec): string {
     stateLabelSize: spec.style?.stateLabelSize ?? 16,
     transitionLabelSize: spec.style?.transitionLabelSize ?? 16,
     finalRingGap: spec.style?.finalRingGap ?? 6,
-    initialArrowLength: spec.style?.initialArrowLength ?? 34,
-    initialArrowSpread: spec.style?.initialArrowSpread ?? 16
+    initialArrowLength: spec.style?.initialArrowLength ?? 20,
+    initialArrowSpread: spec.style?.initialArrowSpread ?? 8
   };
 
   // 包围盒
@@ -72,8 +72,8 @@ export function renderAutodata(spec: DiagramSpec): string {
 
   const defs = `
   <defs>
-    <marker id="ad-arrow" viewBox="0 0 10 10" refX="9.3" refY="5"
-            markerWidth="${st.arrowSize}" markerHeight="${st.arrowSize}" orient="auto">
+    <marker id="ad-arrow" viewBox="0 0 10 10" refX="10" refY="5"
+            markerWidth="${st.arrowSize}" markerHeight="${st.arrowSize}" orient="auto-start-reverse">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
     </marker>
   </defs>`;
@@ -106,17 +106,14 @@ function drawState(name: string, s: StateSpec, st: Style): string {
     out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(inner) }));
   }
 
-  // 初态：贴边直线 + 小饰线
+  // 初态：箭头
   if (s.initial) {
     const tip = { x: cx - r, y: cy };
-    // const from = { x: tip.x - 30, y: tip.y };
-    // out.push(`<path d="M ${from.x} ${from.y} L ${tip.x} ${tip.y}" marker-end="url(#ad-arrow)"/>`);
-    // out.push(`<path d="M ${cx - r - 16} ${cy - 7} L ${cx - r - 4} ${cy - 2}"/>`);
     const tail = { x: tip.x - st.initialArrowLength, y: cy };
-    const wing = st.initialArrowSpread;
-    const wingInner = wing * 0.55;
-    const upper = { x: tip.x - wingInner, y: cy - wing };
-    const lower = { x: tip.x - wingInner, y: cy + wing };
+    const angle = Math.PI / 6;  // 30deg
+    const L = st.initialArrowSpread;
+    const upper = { x: tip.x - L * Math.cos(angle), y: tip.y - L * Math.sin(angle) };
+    const lower = { x: tip.x - L * Math.cos(angle), y: tip.y + L * Math.sin(angle) };
     out.push(`<path d="M ${tail.x} ${tail.y} L ${tip.x} ${tip.y}"/>`);
     out.push(`<path d="M ${upper.x} ${upper.y} L ${tip.x} ${tip.y} L ${lower.x} ${lower.y}"/>`);
   }
@@ -144,19 +141,17 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
   if (!A || !B) return "";
   const label = tr.label ?? "", out: string[] = [];
 
-  // 自环（括号式）
+  // 自环
   if (tr.loop) {
-    const r = (A.radius ?? st.stateRadius), loopR = r + 10;
-    const ang = ({ N: -Math.PI/2, E: 0, S: Math.PI/2, W: Math.PI } as any)[tr.loopDir ?? "N"];
-    const s1 = { x: A.x + Math.cos(ang - 0.95) * loopR, y: A.y + Math.sin(ang - 0.95) * loopR };
-    const e1 = { x: A.x + Math.cos(ang + 0.95) * loopR, y: A.y + Math.sin(ang + 0.95) * loopR };
-    const q1 = { x: A.x + Math.cos(ang - 0.55) * (loopR + 8), y: A.y + Math.sin(ang - 0.55) * (loopR + 8) };
-    const q2 = { x: A.x + Math.cos(ang + 0.55) * (loopR + 8), y: A.y + Math.sin(ang + 0.55) * (loopR + 8) };
-    out.push(`<path d="M ${s1.x} ${s1.y} C ${q1.x} ${q1.y}, ${q2.x} ${q2.y}, ${e1.x} ${e1.y}" marker-end="url(#ad-arrow)"/>`);
-    const lt = { x: A.x + Math.cos(ang) * (loopR + 22), y: A.y + Math.sin(ang) * (loopR + 22) };
+    const r = A.radius ?? st.stateRadius;
+    const loopR = r * 0.6;
+    const loopY = A.y - r - loopR;
+    const s1 = { x: A.x - loopR, y: A.y - r };
+    const e1 = { x: A.x + loopR, y: A.y - r };
+    out.push(`<path d="M ${s1.x} ${s1.y} A ${loopR} ${loopR} 0 1 1 ${e1.x} ${e1.y}" marker-end="url(#ad-arrow)"/>`);
+    const lt = { x: A.x, y: loopY - loopR - st.labelOffset * 0.7 };
     out.push(svgEl("text", {
       x: String(lt.x), y: String(lt.y),
-      // "text-anchor": "middle", "font-size": "16", "font-style": "italic"
       "text-anchor": "middle",
       "font-size": String(st.transitionLabelSize),
       "font-style": st.labelItalic ? "italic" : "normal",
