@@ -55,7 +55,7 @@ export function renderAutodata(spec: DiagramSpec): string {
     transitionLabelSize: spec.style?.transitionLabelSize ?? 16,
     finalRingGap: spec.style?.finalRingGap ?? 6,
     initialArrowLength: spec.style?.initialArrowLength ?? 20,
-    initialArrowSpread: spec.style?.initialArrowSpread ?? 8
+    initialArrowSpread: spec.style?.initialArrowSpread ?? 12
   };
 
   // 包围盒
@@ -73,7 +73,7 @@ export function renderAutodata(spec: DiagramSpec): string {
   const defs = `
   <defs>
     <marker id="ad-arrow" viewBox="0 0 10 10" refX="10" refY="5"
-            markerWidth="${st.arrowSize}" markerHeight="${st.arrowSize}" orient="auto-start-reverse">
+            markerWidth="${st.arrowSize}" markerHeight="${st.arrowSize}" orient="auto">
       <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"/>
     </marker>
   </defs>`;
@@ -108,13 +108,12 @@ function drawState(name: string, s: StateSpec, st: Style): string {
 
   // 初态：箭头
   if (s.initial) {
-    const tip = { x: cx - r, y: cy };
-    const tail = { x: tip.x - st.initialArrowLength, y: cy };
+    const gap = st.strokeWidth * 1.5;
+    const tip = { x: cx - r - gap, y: cy };
     const angle = Math.PI / 6;  // 30deg
     const L = st.initialArrowSpread;
     const upper = { x: tip.x - L * Math.cos(angle), y: tip.y - L * Math.sin(angle) };
     const lower = { x: tip.x - L * Math.cos(angle), y: tip.y + L * Math.sin(angle) };
-    out.push(`<path d="M ${tail.x} ${tail.y} L ${tip.x} ${tip.y}"/>`);
     out.push(`<path d="M ${upper.x} ${upper.y} L ${tip.x} ${tip.y} L ${lower.x} ${lower.y}"/>`);
   }
 
@@ -144,12 +143,13 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
   // 自环
   if (tr.loop) {
     const r = A.radius ?? st.stateRadius;
-    const loopR = r * 0.6;
-    const loopY = A.y - r - loopR;
-    const s1 = { x: A.x - loopR, y: A.y - r };
-    const e1 = { x: A.x + loopR, y: A.y - r };
-    out.push(`<path d="M ${s1.x} ${s1.y} A ${loopR} ${loopR} 0 1 1 ${e1.x} ${e1.y}" marker-end="url(#ad-arrow)"/>`);
-    const lt = { x: A.x, y: loopY - loopR - st.labelOffset * 0.7 };
+    const h = r * 1.6;
+    const w = r * 1.6;
+    const start = { x: A.x - r * Math.cos(Math.PI / 4), y: A.y - r * Math.sin(Math.PI / 4) };
+    const end = { x: A.x + r * Math.cos(Math.PI / 4), y: A.y - r * Math.sin(Math.PI / 4) };
+    const control = { x: A.x, y: A.y - h };
+    out.push(`<path d="M ${start.x} ${start.y} Q ${control.x} ${control.y}, ${end.x} ${end.y}" marker-end="url(#ad-arrow)"/>`);
+    const lt = { x: A.x, y: A.y - h - st.labelOffset * 0.5 };
     out.push(svgEl("text", {
       x: String(lt.x), y: String(lt.y),
       "text-anchor": "middle",
