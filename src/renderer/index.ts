@@ -111,7 +111,7 @@ function drawState(name: string, s: StateSpec, st: Style): string {
     const gap = st.strokeWidth * 1.5;
     const tip = { x: cx - r - gap, y: cy };
     const angle = Math.PI / 6;  // 30deg
-    const L = st.initialArrowSpread;
+    const L = st.initialArrowLength;
     const upper = { x: tip.x - L * Math.cos(angle), y: tip.y - L * Math.sin(angle) };
     const lower = { x: tip.x - L * Math.cos(angle), y: tip.y + L * Math.sin(angle) };
     out.push(`<path d="M ${upper.x} ${upper.y} L ${tip.x} ${tip.y} L ${lower.x} ${lower.y}"/>`);
@@ -143,13 +143,21 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
   // 自环
   if (tr.loop) {
     const r = A.radius ?? st.stateRadius;
-    const h = r * 1.6;
-    const w = r * 1.6;
-    const start = { x: A.x - r * Math.cos(Math.PI / 4), y: A.y - r * Math.sin(Math.PI / 4) };
-    const end = { x: A.x + r * Math.cos(Math.PI / 4), y: A.y - r * Math.sin(Math.PI / 4) };
-    const control = { x: A.x, y: A.y - h };
-    out.push(`<path d="M ${start.x} ${start.y} Q ${control.x} ${control.y}, ${end.x} ${end.y}" marker-end="url(#ad-arrow)"/>`);
-    const lt = { x: A.x, y: A.y - h - st.labelOffset * 0.5 };
+    const arcHeight = r * 2.5; // 弧线的高度
+    const arcWidth = r * 2;   // 弧线的宽度
+
+    // 定义弧线的起点和终点，稍微错开以避免与状态圆的切点完全重合
+    const startAngle = -Math.PI / 3;
+    const endAngle = -2 * Math.PI / 3;
+    const start = { x: A.x + r * Math.cos(startAngle), y: A.y + r * Math.sin(startAngle) };
+    const end = { x: A.x + r * Math.cos(endAngle), y: A.y + r * Math.sin(endAngle) };
+
+    // 定义两个控制点，以创建优弧
+    const control1 = { x: A.x + arcWidth / 2, y: A.y - arcHeight };
+    const control2 = { x: A.x - arcWidth / 2, y: A.y - arcHeight };
+
+    out.push(`<path d="M ${start.x} ${start.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${end.x} ${end.y}" marker-end="url(#ad-arrow)"/>`);
+    const lt = { x: A.x, y: A.y - arcHeight - st.labelOffset * 0.5 };
     out.push(svgEl("text", {
       x: String(lt.x), y: String(lt.y),
       "text-anchor": "middle",
