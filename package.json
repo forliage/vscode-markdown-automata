@@ -4,6 +4,10 @@
   "description": "Render textbook-accurate automata diagrams from ```autodata fences in Markdown; PNG for preview, SVG for papers.",
   "version": "1.0.3",
   "publisher": "forliage",
+  "repository": {
+		"type": "git",
+		"url": "https://github.com/forliage/vscode-markdown-automata.git"
+	},
   "engines": {
     "vscode": "^1.85.0"
   },
