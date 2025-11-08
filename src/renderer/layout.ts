@@ -1,23 +1,39 @@
-export function mid(a: Pt, b: Pt): Pt {
-  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
-}
+import type { StateSpec } from "./types";
 
-export function normal(a: Pt, b: Pt, d: number): Pt {
-  const dx = b.x - a.x, dy = b.y - a.y;
-  const L = Math.hypot(dx, dy) || 1;
-  return { x: -dy / L * d, y: dx / L * d };
-}
+// 布局参数
+const P = {
+  HorizGap: 280,
+  VertGap: 240,
+  CircRadius: 220
+};
 
-export function lineAngle(p: Pt, q: Pt) {
-  return Math.atan2(q.y - p.y, q.x - p.x);
-}
+export function doLayout(specStates: Record<string, StateSpec>): boolean {
+  const states = Object.values(specStates);
+  const n = states.length;
+  if (n === 0) return true;
 
-export function offsetPoint(p: Pt, ang: number, r: number): Pt {
-  return { x: p.x + Math.cos(ang) * r, y: p.y + Math.sin(ang) * r };
-}
+  // 检查是否需要布局
+  const needsLayout = states.some(s => s.x === undefined || s.y === undefined);
+  if (!needsLayout) return true;
 
-export function boundsPadding(minX: number, minY: number, maxX: number, maxY: number, pad: number) {
-  return { x: minX - pad, y: minY - pad, w: maxX - minX + pad * 2, h: maxY - minY + pad * 2 };
-}
+  // 布局算法
+  if (n === 1) {
+    states[0].x = 0;
+    states[0].y = 0;
+  } else if (n === 2) {
+    // 水平排列
+    states[0].x = -P.HorizGap / 2;
+    states[0].y = 0;
+    states[1].x = P.HorizGap / 2;
+    states[1].y = 0;
+  } else {
+    // 环形排列
+    for (let i = 0; i < n; i++) {
+      const angle = (2 * Math.PI * i) / n - Math.PI / 2; // 从顶部开始
+      states[i].x = P.CircRadius * Math.cos(angle);
+      states[i].y = P.CircRadius * Math.sin(angle);
+    }
+  }
 
-export type Pt = { x: number; y: number };
+  return true;
+}

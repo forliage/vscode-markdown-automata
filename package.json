@@ -4,9 +4,16 @@
   "description": "Render textbook-accurate automata diagrams from ```autodata fences in Markdown; PNG for preview, SVG for papers.",
   "version": "1.0.3",
   "publisher": "forliage",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Programming Languages", "Other"],
-  "activationEvents": ["onLanguage:markdown"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "markdown.markdownItPlugins": true

@@ -177,6 +177,12 @@ export default function plugin(md: MarkdownIt, opts?: Options) {
   const rasterize = opts?.rasterize ?? "png";
   const embedPngAsDataUri = opts?.embedPngAsDataUri ?? true; // 默认开启 data-uri
 
+  const escapeHtml = (str: string) =>
+    str.replace(/[&<>'"]/g, tag => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;',
+      "'": '&#39;', '"': '&quot;',
+    }[tag] || tag));
+
   md.core.ruler.push("autodata-fence-to-image", (state: any) => {
     const tokens: any[] = state.tokens;
     if (!Array.isArray(tokens)) return;
@@ -189,149 +195,82 @@ export default function plugin(md: MarkdownIt, opts?: Options) {
       if (info.split(/\s+/)[0] !== "autodata") continue;
 
       const log = new FenceLogger();
-      log.log("=== fence start ===");
-      log.log("md.env.path", { envPath: state.env?.path });
-
-      const envPath: string | undefined = state.env?.path;
-      const docPathFromOpt = typeof opts?.getDocPath === "function" ? opts!.getDocPath() : undefined;
-      const docPath = envPath || docPathFromOpt;
-
-      // 1) YAML
-      let spec: unknown;
+      // 对每个代码块使用独立的 try-catch，确保单个图表的错误不会影响其他图表
       try {
-        spec = yaml.load(t.content);
-        log.log("yaml ok", { keys: Object.keys((spec as any) || {}) });
-      } catch (e: any) {
-        log.log("yaml error", { error: e?.message });
-        const err = new Token("html_block", "", 0);
-        err.block = true;
-        err.content = `<pre class="autodata-error">YAML parse error: ${e.message}</pre>`;
-        tokens.splice(i, 1, err);
-        continue;
-      }
+        log.log("=== fence start ===");
+        log.log("md.env.path", { envPath: state.env?.path });
 
-      // 2) SVG
-      let svg = "";
-      try {
-        svg = renderAutodata(spec as any);
+        // 1) YAML 解析
+        const spec = yaml.load(t.content);
+        if (typeof spec !== "object" || spec === null) {
+          throw new Error("YAML content must result in an object.");
+        }
+        log.log("yaml ok", { keys: Object.keys(spec) });
+
+        // 2) SVG 渲染
+        const svg = renderAutodata(spec as any);
         log.log("render ok", { svgLen: svg.length });
-      } catch (e: any) {
-        log.log("render error", { error: e?.message });
-        const err = new Token("html_block", "", 0);
-        err.block = true;
-        err.content = `<pre class="autodata-error">Render error: ${e.message}</pre>`;
-        tokens.splice(i, 1, err);
-        continue;
-      }
 
-      // 3) 落盘 & 栅格化
-      const hash = crypto.createHash("sha1").update(svg).digest("hex").slice(0, 16);
-      const svgName = `autodata-${hash}.svg`;
-      const pngName = `autodata-${hash}.png`;
+        // 3) 准备路径和最终的 Data URI
+        let srcDataUri = "";
+        const docPathFromOpt = typeof opts?.getDocPath === "function" ? opts.getDocPath() : undefined;
+        const docPath = state.env?.path || docPathFromOpt;
 
-      let htmlImg = "";
-      try {
-        if (docPath && path.isAbsolute(docPath)) {
+        // 4) 尝试栅格化为 PNG Data URI
+        if (rasterize === "png" && docPath && path.isAbsolute(docPath)) {
           const dir = path.dirname(docPath);
           const outDir = path.join(dir, outSubdir);
           if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
 
           const debugFile = path.join(outDir, "_autodata-debug.log");
           log.setOut(debugFile);
-          log.log("out paths", { dir, outDir, svgName, pngName, debugFile });
 
-          const svgPath = path.join(outDir, svgName);
-          if (!fs.existsSync(svgPath)) fs.writeFileSync(svgPath, svg, "utf-8");
-          log.log("write svg ok", { svgPath });
+          const hash = crypto.createHash("sha1").update(svg).digest("hex").slice(0, 16);
+          const pngName = `autodata-${hash}.png`;
+          const pngPath = path.join(outDir, pngName);
 
-          // 生成 PNG
-          // let useRel = path.posix.join(outSubdir, svgName);
-          // let usedDataUri = false;
-          let srcAttr = "";
-          let inlineDataUri: string | null = null;
-          if (rasterize === "png") {
-            const pngPath = path.join(outDir, pngName);
-            // 解析 sharp 起点：文档目录 / 插件目录 / CWD
+          if (!fs.existsSync(pngPath)) {
+            log.log(`png not cached, rasterizing to ${pngPath}`);
             const startDirs = [dir, __dirname || "", process.cwd() || ""].filter(Boolean);
-            if (!fs.existsSync(pngPath)) {
-              const rr = rasterizeSvgToPngSync(svg, pngPath, log, 320, startDirs);
-              log.log("rasterize result", rr);
-            }
-            if (fs.existsSync(pngPath)) {
-              const relPng = path.posix.join(outSubdir, pngName).replace(/\\/g, "/");
-              srcAttr = encodeURI(relPng).replace(/#/g, "%23");
-              if (embedPngAsDataUri) {
-                try {
-                  const bin = fs.readFileSync(pngPath);
-                  // const b64 = bin.toString("base64");
-                  // useRel = `data:image/png;base64,${b64}`;
-                  // usedDataUri = true;
-                  // log.log("embed data-uri", { length: b64.length });
-                  inlineDataUri = `data:image/png;base64,${bin.toString("base64")}`;
-                  log.log("embed data-uri prepared", { length: inlineDataUri.length });
-                } catch (e: any) {
-                  inlineDataUri = null;
-                  log.log("embed data-uri readFile error", { error: e?.message });
-                  // useRel = path.posix.join(outSubdir, pngName); // 退回文件路径
-                }
-              // } else {
-                // useRel = path.posix.join(outSubdir, pngName);
-              }
-            } else {
-              log.log("png not exists after rasterize", { expect: pngName });
-            }
+            const rr = rasterizeSvgToPngSync(svg, pngPath, log, 320, startDirs);
+            log.log("rasterize result", rr);
           } else {
-            log.log("rasterize disabled", { rasterize });
+            log.log(`using cached png from ${pngPath}`);
           }
 
-          // htmlImg = `<p><img src="${useRel}" alt="autodata" style="max-width:100%;"/></p>`;
-          // log.log("html <img> injected", { src: useRel, usedDataUri });
-          if (!srcAttr) {
-            const relSvg = path.posix.join(outSubdir, svgName).replace(/\\/g, "/");
-            srcAttr = encodeURI(relSvg).replace(/#/g, "%23");
-          }
-
-          const attrs: string[] = [
-            `src="${srcAttr}"`,
-            'alt="autodata"',
-            'style="max-width:100%;height:auto;"'
-          ];
-          if (inlineDataUri) {
-            attrs.push(`data-autodata-inline="${inlineDataUri}"`);
-          }
-          htmlImg = `<p class="autodata-diagram"><img ${attrs.join(" ")} loading="lazy" decoding="async"/></p>`;
-          log.log("html <img> injected", { src: srcAttr, hasInline: Boolean(inlineDataUri) });
-
-          try {
-            const files = fs.readdirSync(outDir);
-            log.log("outDir list", { files });
-          } catch (e: any) {
-            log.log("readdir error", { error: e?.message });
+          if (fs.existsSync(pngPath)) {
+            const bin = fs.readFileSync(pngPath);
+            srcDataUri = `data:image/png;base64,${bin.toString("base64")}`;
+            log.log("embed png data-uri ok", { length: srcDataUri.length });
+          } else {
+            log.log("png not available after rasterize attempt, will fallback to svg");
           }
         } else {
-          log.log("docPath not absolute, fallback to data-uri", { docPath });
-          const uri = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-          // htmlImg = `<p><img src="${uri}" alt="autodata" style="max-width:100%;"/></p>`;
-          htmlImg = `<p class="autodata-diagram"><img src="${uri}" alt="autodata" style="max-width:100%;height:auto;" loading="lazy" decoding="async"/></p>`;
+          log.log("rasterize skipped (no docPath, or disabled)", { docPath, rasterize });
         }
+
+        // 5) 如果栅格化失败或被禁用，退回到 SVG Data URI
+        if (!srcDataUri) {
+          srcDataUri = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
+          log.log("fallback to svg data-uri", { length: srcDataUri.length });
+        }
+
+        // 6) 创建并替换 Token
+        const html = new Token("html_block", "", 0);
+        html.block = true;
+        html.content = `<p class="autodata-diagram"><img src="${srcDataUri}" alt="autodata diagram" style="max-width:100%;height:auto;"/></p>`;
+        tokens.splice(i, 1, html);
+
       } catch (e: any) {
-        log.log("write/rasterize outer error", { error: e?.message });
+        log.log("fence processor FAILED", { error: e.stack || e.message });
+        const errToken = new Token("html_block", "", 0);
+        errToken.block = true;
+        errToken.content = `<pre class="autodata-error" style="color:red; background-color:#fdd; border:1px solid red; padding:1em;">[autodata] Render Error:\n${escapeHtml(e.message)}</pre>`;
+        tokens.splice(i, 1, errToken);
+      } finally {
+        log.log("=== fence end ===");
+        log.flush();
       }
-
-      if (!htmlImg) {
-        const uri = "data:image/svg+xml;utf8," + encodeURIComponent(svg);
-        // htmlImg = `<p><img src="${uri}" alt="autodata" style="max-width:100%;"/></p>`;
-        htmlImg = `<p class="autodata-diagram"><img src="${uri}" alt="autodata" style="max-width:100%;height:auto;" loading="lazy" decoding="async"/></p>`;
-        log.log("fallback to data-uri", { len: uri.length });
-      }
-
-      const html = new Token("html_block", "", 0);
-      html.block = true;
-      html.content = htmlImg;
-      tokens.splice(i, 1, html);
-
-      log.log("=== fence end ===");
-      log.flush();
     }
   });
 

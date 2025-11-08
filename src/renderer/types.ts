@@ -1,5 +1,5 @@
 export type StateSpec = {
-  x: number; y: number;
+  x?: number; y?: number;
   label?: string;
   radius?: number;
   initial?: boolean;

@@ -1,5 +1,6 @@
 import type { DiagramSpec, StateSpec, TransitionSpec } from "./types";
 import { svgEl, svgSelf, esc } from "./svg";
+import { doLayout } from "./layout";
 
 /* —— 基本几何 —— */
 type Pt = { x: number; y: number };
@@ -58,15 +59,18 @@ export function renderAutodata(spec: DiagramSpec): string {
     initialArrowSpread: spec.style?.initialArrowSpread ?? 12
   };
 
+  // 布局
+  doLayout(spec.states);
+
   // 包围盒
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   const S: Record<string, StateSpec> = spec.states || {};
   Object.values(S).forEach(s => {
     const r = s.radius ?? st.stateRadius;
-    minX = Math.min(minX, s.x - r - 70);
-    minY = Math.min(minY, s.y - r - 70);
-    maxX = Math.max(maxX, s.x + r + 70);
-    maxY = Math.max(maxY, s.y + r + 70);
+    minX = Math.min(minX, s.x! - r - 70);
+    minY = Math.min(minY, s.y! - r - 70);
+    maxX = Math.max(maxX, s.x! + r + 70);
+    maxY = Math.max(maxY, s.y! + r + 70);
   });
   const b = boundsPadding(minX, minY, maxX, maxY, st.padding);
 
@@ -81,23 +85,32 @@ export function renderAutodata(spec: DiagramSpec): string {
   const g: string[] = [];
   g.push(svgSelf("rect", { x: String(b.x), y: String(b.y), width: String(b.w), height: String(b.h), fill: st.background }));
 
+  // 边和节点
+  const transitionEls: string[] = [];
+  const stateEls: string[] = [];
+  let pathIdCounter = 0;
+
   // 先画边
-  (spec.transitions || []).forEach(tr => g.push(drawTransition(tr, S, st)));
+  (spec.transitions || []).forEach(tr => {
+    pathIdCounter++;
+    transitionEls.push(drawTransition(tr, S, st, `ad-path-${pathIdCounter}`));
+  });
   // 后画节点
-  Object.entries(S).forEach(([name, s]) => g.push(drawState(name, s, st)));
+  Object.entries(S).forEach(([name, s]) => stateEls.push(drawState(name, s, st)));
 
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${b.w}" height="${b.h}" viewBox="${b.x} ${b.y} ${b.w} ${b.h}"
     style="color:#000; font-family:${esc(st.fontFamily)}">
     ${defs}
     <g stroke="#000" stroke-width="${st.strokeWidth}" fill="none" stroke-linecap="round" stroke-linejoin="round">
-      ${g.join("\n")}
+      ${transitionEls.join("\n")}
+      ${stateEls.join("\n")}
     </g>
   </svg>`;
 }
 
 /* —— 节点 —— */
 function drawState(name: string, s: StateSpec, st: Style): string {
-  const r = s.radius ?? st.stateRadius, cx = s.x, cy = s.y;
+  const r = s.radius ?? st.stateRadius, cx = s.x!, cy = s.y!;
   const out: string[] = [];
   out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(r) }));
   // if (s.final) out.push(svgSelf("circle", { cx: String(cx), cy: String(cy), r: String(r - 4) }));
@@ -135,7 +148,7 @@ function drawState(name: string, s: StateSpec, st: Style): string {
 }
 
 /* —— 边 —— */
-function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: Style): string {
+function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: Style, pathId: string): string {
   const A = S[String(tr.from)], B = S[String(tr.to)];
   if (!A || !B) return "";
   const label = tr.label ?? "", out: string[] = [];
@@ -143,59 +156,58 @@ function drawTransition(tr: TransitionSpec, S: Record<string, StateSpec>, st: St
   // 自环
   if (tr.loop) {
     const r = A.radius ?? st.stateRadius;
-    const arcHeight = r * 2.5; // 弧线的高度
-    const arcWidth = r * 2;   // 弧线的宽度
-
-    // 定义弧线的起点和终点，稍微错开以避免与状态圆的切点完全重合
+    const arcHeight = r * 2.5;
+    const arcWidth = r * 2;
     const startAngle = -Math.PI / 3;
     const endAngle = -2 * Math.PI / 3;
-    const start = { x: A.x + r * Math.cos(startAngle), y: A.y + r * Math.sin(startAngle) };
-    const end = { x: A.x + r * Math.cos(endAngle), y: A.y + r * Math.sin(endAngle) };
+    const start = { x: A.x! + r * Math.cos(startAngle), y: A.y! + r * Math.sin(startAngle) };
+    const end = { x: A.x! + r * Math.cos(endAngle), y: A.y! + r * Math.sin(endAngle) };
+    const control1 = { x: A.x! + arcWidth / 2, y: A.y! - arcHeight };
+    const control2 = { x: A.x! - arcWidth / 2, y: A.y! - arcHeight };
 
-    // 定义两个控制点，以创建优弧
-    const control1 = { x: A.x + arcWidth / 2, y: A.y - arcHeight };
-    const control2 = { x: A.x - arcWidth / 2, y: A.y - arcHeight };
+    const pathD = `M ${start.x} ${start.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${end.x} ${end.y}`;
+    out.push(`<path id="${pathId}" d="${pathD}" marker-end="url(#ad-arrow)"/>`);
 
-    out.push(`<path d="M ${start.x} ${start.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${end.x} ${end.y}" marker-end="url(#ad-arrow)"/>`);
-    const lt = { x: A.x, y: A.y - arcHeight - st.labelOffset * 0.5 };
-    out.push(svgEl("text", {
-      x: String(lt.x), y: String(lt.y),
-      "text-anchor": "middle",
-      "font-size": String(st.transitionLabelSize),
-      "font-style": st.labelItalic ? "italic" : "normal",
-      fill: "currentColor",
-      stroke: "none"
-    }, esc(label)));
+    const textEl = svgEl("text", {
+      "text-anchor": "middle", "dominant-baseline": "middle",
+      "font-size": String(st.transitionLabelSize), "font-style": st.labelItalic ? "italic" : "normal",
+      fill: "#000", stroke: "none"
+    },
+      `<textPath href="#${pathId}" startOffset="50%" dy="-${st.labelOffset}px">${esc(label)}</textPath>`
+    );
+    out.push(textEl);
     return out.join("\n");
   }
 
-  // 普通边：二次贝塞尔 + 两端按“圆心→控制点”方向均取 +r 裁剪（修正错位）
-  const a = { x: A.x, y: A.y }, b = { x: B.x, y: B.y };
+  // 普通边
+  const a = { x: A.x!, y: A.y! }, b = { x: B.x!, y: B.y! };
+  // 对称性修复：通过 canonicalize a,b 的方向，确保 normal() 向量方向稳定
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const canonicalA = dx > 0 || (dx === 0 && dy > 0) ? a : b;
+  const canonicalB = dx > 0 || (dx === 0 && dy > 0) ? b : a;
+
   const bend = tr.bend ?? 0.24;
-  const m = mid(a, b);
-  const c = add(m, normal(a, b, Math.hypot(b.x - a.x, b.y - a.y) * bend));
+  const m = mid(canonicalA, canonicalB);
+  const c = add(m, normal(canonicalA, canonicalB, Math.hypot(dx, dy) * bend));
 
   const ra = A.radius ?? st.stateRadius;
   const rb = B.radius ?? st.stateRadius;
+  const start = pointToward(a, c, ra);
+  const end = pointToward(b, c, rb);
 
-  const start = pointToward(a, c, ra); // +r
-  const end   = pointToward(b, c, rb); // +r（修正：以前用了 -r 导致箭头切线错位）
+  const pathD = `M ${start.x} ${start.y} Q ${c.x} ${c.y}, ${end.x} ${end.y}`;
+  out.push(`<path id="${pathId}" d="${pathD}" marker-end="url(#ad-arrow)"/>`);
 
-  out.push(`<path d="M ${start.x} ${start.y} Q ${c.x} ${c.y}, ${end.x} ${end.y}" marker-end="url(#ad-arrow)"/>`);
-
-  // 标签：曲线中点沿法线外推
-  const lm = mid(start, end);
-  const tn = normal(start, end, st.labelOffset);
-  const lp = add(lm, tn);
-  out.push(svgEl("text", {
-    x: String(lp.x), y: String(lp.y),
-    // "text-anchor": "middle", "font-size": "16", "font-style": "italic"
+  // 标签
+  const textEl = svgEl("text", {
     "text-anchor": "middle",
+    "dominant-baseline": "middle",
     "font-size": String(st.transitionLabelSize),
     "font-style": st.labelItalic ? "italic" : "normal",
-    fill: "currentColor",
+    fill: "#000",
     stroke: "none"
-  }, esc(label)));
+  }, `<textPath href="#${pathId}" startOffset="50%" dy="${(bend > 0 ? -1 : 1) * st.labelOffset}px">${esc(label)}</textPath>`);
+  out.push(textEl);
 
   return out.join("\n");
 }
